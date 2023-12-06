@@ -1,1 +1,182 @@
+ # BRIEF 9 - RAJA
+ 
+ ### **Contesto**
+Scegliere uno strumento che che permette di scrivere in maniera pulita e in sicurezza il codice *SONOARQUBE*, ma non siamo obbligati a prendere per forza questo possiamo prendere un altro strumento per esempio *SONARCLOUD* e utilizzare due strumenti che permettono di riconoscere la vulnerabilità della dependency del progetto *OWASP Dependency-Check* 
 
+- Prima difficoltà che ho rincontrato é stata l'installazione di Jenkins. Dopo aver incontrato questo problema. Mi é stato consigliato di installare jenkins tramite **Docker-Compose** e **DOCKERFILE**
+---
+
+ ### **DOCKER-COMPOSE**
+
+- sudo nano docker-compose.yml
+
+<img width="399" alt="Screenshot at Apr 29 17-16-24" src="https://user-images.githubusercontent.com/108053084/235310637-e411cf97-ae35-49ea-9f7e-9e76eea2bac3.png">
+  
+
+### **DOCKERFILE**
+
+ - sudo nano Dockerfile
+
+```
+FROM jenkins/jenkins:lts
+USER root 
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update -y && \  
+    apt install -y jq parallel  && \
+    curl -sSL https://get.docker.com/ | sh
+COPY config /root/.kube/config 
+
+```
+- *   curl -sSL https://get.docker.com/ | sh -> questo codice permmette di installare tutto il pacchetto di Docker. .sh racchiude tutti i file per installare Docker.
+*
+
+### **DOCKER-COMPOSE**
+
+- sudo nano docker-compose up
+- se faccio la commande :
+
+```
+  -   nano docker-compose up -d
+
+e una commande che permette di dire al programma di non mostrarmi le log e di tenerli nascosti.
+Se utilizziamo questo commande dopo ci dobbiamo ricordare di fare la seguente commande per illustrate la password di jenkins: 
+
+  -   docker logs (e il nome del nostro container) nel nostro caso quindi sarà:
+
+  -   docker logs jenkins
+
+  ```
+
+### **OWASP- Dependendency-Check**
+
+- Per integrare **OWASP Dependency-Check**
+
+1. Aggiungerlo nel plugin di Jenkins
+
+2. <img width="1101" alt="Screenshot at Apr 29 18-04-50" src="https://user-images.githubusercontent.com/108053084/235312293-085075b0-a859-49e3-83ac-90c4f88ce955.png">
+
+<img width="1107" alt="Screenshot at Apr 29 18-10-01" src="https://user-images.githubusercontent.com/108053084/235312640-0faeaddb-ebb0-4d4d-bd56-f02d93e35993.png">
+
+
+### **SONARQUBE**
+
+Ho cercato di integrare *SONARQUBE* sulla pipelin-jenkins, senza alcun risultato perché per poter integrare sonarqube alla pipeline é molto più complesso e richiede un server per poter fare un legame con jenkins. Per cui sono passata su *SONARCLOUD* che é la versione cloud di SONARQUBE. Per integrare SonarCloud su jenkins bisona eseguire nei seguenti modi:
+1. Installare il plugin Installare il plugin SonarQube Scanner Plugin per Jenkins.
+
+
+
+### **PIPELINE JENKINS**
+```
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_CREDENTIALS=credentials('docker')
+    }
+    
+    stages{
+        stage('CleanWs'){
+            // Nettoyage de l'espace de travail Jenkins
+            steps{
+            cleanWs()
+                
+            }
+        }
+    
+            
+        stage('Clone Repository') {
+            steps{
+                sh('''
+                git clone https://github.com/simplon-choukriraja/Brief8-Raja.git
+                ''')
+            }
+        }
+        
+        
+        stage('Build Image') {
+            steps {
+                sh ('''
+                cd Brief8-Raja
+                docker build -t vote-app .
+                ''')
+            }
+        }
+        
+        
+        stage('Login') {
+            steps {
+                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+                
+            }
+        }
+        
+        
+        stage('Push') {
+            steps {
+                sh ('''
+                PATCH=$(cat Brief8-Raja/azure-vote/main.py | grep "ver = ".*"" | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+")
+                docker tag vote-app raja8/vote-app:\044PATCH
+                docker push raja8/vote-app:\044PATCH
+    
+                ''')
+            }
+        }
+        
+        stage('Clone repository app-vote') {
+            steps {
+                    sh('''
+                    git clone https://github.com/simplon-choukriraja/brief7-votinapp.git app
+                    TAG=\044(curl -sSf https://registry.hub.docker.com/v2/repositories/raja8/vote-app/tags |jq '."results"[0]["name"]'| tr -d '"')
+                    sed -i "s/TAG/\044{TAG}/" ./app/vote.yml
+                    ''')
+                
+            }
+        }
+        
+        stage('Test de charge'){
+            steps{
+                sh('''
+                seq 250 | parallel --max-args 0  --jobs 10 "curl -k -iF 'vote=Pizza' http://vote.simplon-raja.space"
+                ''')
+            }
+        }
+        
+        stage('Owasp'){
+            steps{
+                dependencyCheck additionalArguments: '', odcInstallation: 'OWASP-Dependency-Check'
+            }
+        }
+        
+        stage('Result'){
+            steps{
+                dependencyCheckPublisher pattern: ''
+                
+            }
+        }
+        stage("build & SonarQube analysis") {
+            steps {
+              withSonarQubeEnv('My SonarQube Server') {
+                sh 'mvn clean package sonar:sonar'
+              }
+            }
+        }
+          
+            
+        stage("Quality Gate") {
+            steps {
+              timeout(time: 1, unit: 'HOURS') {
+                waitForQualityGate abortPipeline: true
+              }
+            }
+        }
+    }
+    
+}
+
+```
+
+NB. Mi é stato conisgliato di mettere *OWASP* e il *RISULTATO* prima di *BUILD DOCKER* ma é meglio farlo alla fine perché avendo ancora difficoltà a creare *SONARQUBE* mi da tutto errore. 
+
+
+TOKEN 
+
+*db1dc4cbd9cdf4d756d221e2681032f858e6e5e1* token creato tramite l'account SonarCloud. bre
